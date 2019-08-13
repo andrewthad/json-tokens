@@ -1,0 +1,44 @@
+cabal-version: 2.2
+name: json-tokenize
+version: 0.1.0.0
+synopsis: Tokenize JSON
+description: Convert JSON to a token stream.
+homepage: https://github.com/andrewthad/json-tokenize
+bug-reports: https://github.com/andrewthad/json-tokenize/issues
+license: BSD-3-Clause
+license-file: LICENSE
+author: Andrew Martin
+maintainer: andrew.thaddeus@gmail.com
+copyright: 2019 Andrew Martin
+category: Data
+extra-source-files: CHANGELOG.md
+
+library
+  exposed-modules: Data.Json.Tokenize
+  build-depends:
+    , base >=4.12 && <5
+    , array-builder >=0.1 && <0.2
+    , text-short
+    , bytesmith
+    , primitive >=0.7 && <0.8
+    , bytestring
+    , byteslice
+    , array-chunks
+  hs-source-dirs: src
+  default-language: Haskell2010
+
+test-suite test
+  default-language: Haskell2010
+  type: exitcode-stdio-1.0
+  hs-source-dirs: test
+  main-is: Main.hs
+  build-depends:
+    , base >=4.12.0.0 && <5
+    , byteslice
+    , bytestring
+    , small-bytearray-builder
+    , QuickCheck >=2.13.1 && <2.14
+    , tasty-hunit >=0.10.0.2 && <0.11
+    , tasty >=1.2.3 && <1.3
+    , primitive
+    , vector
