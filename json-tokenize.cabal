@@ -26,19 +26,48 @@ library
     , array-chunks
   hs-source-dirs: src
   default-language: Haskell2010
+  ghc-options: -Wall -O2
 
 test-suite test
   default-language: Haskell2010
   type: exitcode-stdio-1.0
-  hs-source-dirs: test
+  hs-source-dirs: test, common
   main-is: Main.hs
+  other-modules:
+    Twitter1
+    Twitter10
+    Twitter100
+  ghc-options: -Wall -O2
   build-depends:
+    , QuickCheck >=2.13.1 && <2.14
     , base >=4.12.0.0 && <5
     , byteslice
     , bytestring
-    , small-bytearray-builder
-    , QuickCheck >=2.13.1 && <2.14
-    , tasty-hunit >=0.10.0.2 && <0.11
-    , tasty >=1.2.3 && <1.3
+    , json-tokenize
+    , neat-interpolation >=0.3.2
     , primitive
+    , small-bytearray-builder
+    , tasty >=1.2.3 && <1.3
+    , tasty-hunit >=0.10.0.2 && <0.11
+    , text >=1.2
     , vector
+
+benchmark bench
+  type: exitcode-stdio-1.0
+  build-depends:
+    , base
+    , byteslice
+    , bytestring
+    , gauge
+    , json-tokenize
+    , neat-interpolation >=0.3.2
+    , primitive
+    , text >=1.2
+  ghc-options: -Wall -O2
+  default-language: Haskell2010
+  hs-source-dirs: bench, common
+  main-is: Main.hs
+  other-modules:
+    Twitter1
+    Twitter10
+    Twitter100
