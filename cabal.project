@@ -1,1 +1,1 @@
-packages: . ../array-builder ../bytesmith
+packages: . ../array-builder ../array-chunks

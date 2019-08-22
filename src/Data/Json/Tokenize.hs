@@ -15,6 +15,7 @@ module Data.Json.Tokenize
   ( Token(..)
   , SmallNumber(..)
   , LargeNumber(..)
+  , JsonTokenizeException(..)
   , decode
   ) where
 
@@ -23,23 +24,23 @@ import Data.Bits ((.&.),(.|.),unsafeShiftR)
 import Data.Builder.ST (Builder)
 import Data.Bytes.Parser (Parser)
 import Data.Bytes.Types (Bytes(..))
-import Data.Char (ord,chr)
-import Data.Chunks (Chunks)
+import Data.Char (ord)
 import Data.Int (Int64)
-import Data.Primitive.ByteArray (MutableByteArray,ByteArray)
+import Data.Primitive (MutableByteArray,ByteArray)
+import Data.Primitive (SmallArray)
 import Data.Text.Short (ShortText)
 import Data.Word (Word8,Word16,Word32)
 import GHC.Int (Int64(I64#))
-import GHC.Exts (Char#,Int#,Int(I#),Char(C#),(-#),(+#))
-import GHC.Exts (Word(W#),word2Int#,chr#,gtWord#,ltWord#)
+import GHC.Exts (Char#,Int#,Int(I#),Char(C#))
+import GHC.Exts (word2Int#,chr#,gtWord#,ltWord#)
 import GHC.Word (Word16(W16#),Word8(W8#))
 
 import qualified Data.ByteString.Short.Internal as BSS
 import qualified Data.Bytes.Parser as P
 import qualified Data.Builder.ST as B
+import qualified Data.Chunks as C
 import qualified Data.Primitive as PM
 import qualified Data.Text.Short.Unsafe as TS
-import qualified GHC.Exts as Exts
 
 data Token
   = LeftBrace
@@ -85,21 +86,25 @@ isSpace w =
   || w == c2w '\r'
   || w == c2w '\n'
 
-decode :: Bytes -> Either JsonTokenizeException (Chunks Token)
+decode :: Bytes -> Either JsonTokenizeException (SmallArray Token)
 decode !bs = runST $ do
   !b <- B.new
   P.parseBytesST (P.skipWhile isSpace *> manyTokens b) bs >>= \case
     P.Failure err -> pure (Left err)
     P.Success cs _ _ -> pure (Right cs)
 
-manyTokens :: Builder s Token -> Parser JsonTokenizeException s (Chunks Token)
+manyTokens ::
+     Builder s Token
+  -> Parser JsonTokenizeException s (SmallArray Token)
 manyTokens !b0 = do
   t <- oneToken
   !b1 <- P.effect (B.push t b0)
   P.skipWhile isSpace
   done <- P.isEndOfInput
   if done
-    then P.effect (B.freeze b1)
+    then P.effect $ do
+      cs <- B.freeze b1
+      pure $! C.concat cs
     else manyTokens b1
 
 oneToken :: Parser JsonTokenizeException s Token
@@ -126,7 +131,7 @@ oneToken = P.anyAscii JsonTokenizeException >>= \case
   c | c >= '0' && c <= '9' -> do
         P.unconsume 1
         number 1 `P.orElse` largeNumber 1
-  _ -> P.failure NonLeadingCharacter
+  _ -> P.fail NonLeadingCharacter
 
 copyAndEscape :: Int -> Parser JsonTokenizeException s Token
 copyAndEscape !maxLen = do
@@ -162,7 +167,7 @@ copyAndEscape !maxLen = do
             if w >= 0xD800 && w < 0xDFFF
               then go =<< P.effect (encodeUtf8Char dst ix '\xFFFD')
               else go =<< P.effect (encodeUtf8Char dst ix (w16ToChar w))
-          _ -> P.failure BadEscapeSequence
+          _ -> P.fail BadEscapeSequence
         '"'# -> do
           str <- P.effect
             (PM.unsafeFreezeByteArray =<< PM.resizeMutableByteArray dst ix)
@@ -315,11 +320,6 @@ afterExpLarge = P.anyAscii JsonTokenizeException >>= \case
 
 byteArrayToShortByteString :: ByteArray -> BSS.ShortByteString
 byteArrayToShortByteString (PM.ByteArray x) = BSS.SBS x
-
-toAsciiLower :: Char -> Char
-toAsciiLower c@(C# c#)
-  | c >= 'A' && c <= 'Z' = C# (Exts.chr# (Exts.ord# c# +# 32#))
-  | otherwise = c
 
 c2w :: Char -> Word8
 c2w = fromIntegral . ord
