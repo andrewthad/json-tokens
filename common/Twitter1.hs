@@ -6,13 +6,14 @@ module Twitter1
   ) where
 
 import Data.ByteString.Short (ShortByteString,toShort)
-import Data.Json.Tokenize (Token(..),LargeNumber(..),SmallNumber(..))
+import Data.Json.Tokenize (Token(..))
 import Data.Primitive (ByteArray)
 import Data.Text.Encoding (encodeUtf8)
 import NeatInterpolation (text)
 
 import qualified Data.Primitive as PM
 import qualified Data.ByteString.Short.Internal as BSS
+import qualified Data.Number.Scientific as SCI
 
 shortByteStringToByteArray :: ShortByteString -> ByteArray 
 shortByteStringToByteArray (BSS.SBS x) = PM.ByteArray x
@@ -59,11 +60,11 @@ tokensTwitter1 =
   [ LeftBrace
   , String "completed_in"
   , Colon
-  , NumberSmall (SmallNumber 12606 (-6))
+  , Number (SCI.small 12606 (-6))
   , Comma
   , String "max_id"
   , Colon
-  , NumberLarge (LargeNumber 30159761706061824 0)
+  , Number (SCI.large 30159761706061824 0)
   , Comma
   , String "max_id_str"
   , Colon
@@ -75,7 +76,7 @@ tokensTwitter1 =
   , Comma
   , String "page"
   , Colon
-  , NumberSmall (SmallNumber 1 0)
+  , Number (SCI.small 1 0)
   , Comma
   , String "query"
   , Colon
@@ -99,7 +100,7 @@ tokensTwitter1 =
   , Comma
   , String "from_user_id"
   , Colon
-  , NumberSmall (SmallNumber 80430860 0)
+  , Number (SCI.small 80430860 0)
   , Comma
   , String "from_user_id_str"
   , Colon
@@ -111,7 +112,7 @@ tokensTwitter1 =
   , Comma
   , String "id"
   , Colon
-  , NumberLarge (LargeNumber 30159761706061824 0)
+  , Number (SCI.large 30159761706061824 0)
   , Comma
   , String "id_str"
   , Colon
@@ -153,11 +154,11 @@ tokensTwitter1 =
   , Comma
   , String "results_per_page"
   , Colon
-  , NumberSmall (SmallNumber 1 0)
+  , Number (SCI.small 1 0)
   , Comma
   , String "since_id"
   , Colon
-  , NumberSmall (SmallNumber 0 0)
+  , Number (SCI.small 0 0)
   , Comma
   , String "since_id_str"
   , Colon

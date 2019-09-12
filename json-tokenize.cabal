@@ -16,7 +16,6 @@ extra-source-files: CHANGELOG.md
 library
   exposed-modules:
     Data.Json.Tokenize
-    Data.Json.Number
   build-depends:
     , base >=4.12 && <5
     , array-builder >=0.1 && <0.2
@@ -26,6 +25,7 @@ library
     , bytestring
     , byteslice
     , array-chunks >=0.1.1 && <0.2
+    , scientific-notation >=0.1
   hs-source-dirs: src
   default-language: Haskell2010
   ghc-options: -Wall -O2
@@ -48,6 +48,7 @@ test-suite test
     , json-tokenize
     , neat-interpolation >=0.3.2
     , primitive
+    , scientific-notation >=0.1
     , small-bytearray-builder
     , tasty >=1.2.3 && <1.3
     , tasty-hunit >=0.10.0.2 && <0.11
@@ -65,6 +66,7 @@ benchmark bench
     , neat-interpolation >=0.3.2
     , primitive
     , text >=1.2
+    , scientific-notation >=0.1
   ghc-options: -Wall -O2
   default-language: Haskell2010
   hs-source-dirs: bench, common

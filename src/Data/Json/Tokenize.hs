@@ -13,8 +13,6 @@
 
 module Data.Json.Tokenize
   ( Token(..)
-  , SmallNumber(..)
-  , LargeNumber(..)
   , JsonTokenizeException(..)
   , decode
   ) where
@@ -34,13 +32,18 @@ import GHC.Int (Int64(I64#))
 import GHC.Exts (Char#,Int#,Int(I#),Char(C#))
 import GHC.Exts (word2Int#,chr#,gtWord#,ltWord#)
 import GHC.Word (Word16(W16#),Word8(W8#))
+import Data.Number.Scientific (Scientific)
 
 import qualified Data.ByteString.Short.Internal as BSS
 import qualified Data.Bytes.Parser as P
+import qualified Data.Bytes.Parser.Utf8 as Utf8
+import qualified Data.Bytes.Parser.Latin as Latin
+import qualified Data.Bytes.Parser.Unsafe as Unsafe
 import qualified Data.Builder.ST as B
 import qualified Data.Chunks as C
 import qualified Data.Primitive as PM
 import qualified Data.Text.Short.Unsafe as TS
+import qualified Data.Number.Scientific as SCI
 
 data Token
   = LeftBrace
@@ -53,8 +56,7 @@ data Token
   | BooleanFalse
   | Null
   | String {-# UNPACK #-} !ShortText
-  | NumberSmall {-# UNPACK #-} !SmallNumber
-  | NumberLarge {-# UNPACK #-} !LargeNumber
+  | Number {-# UNPACK #-} !Scientific
   deriving stock (Eq,Show)
 
 data JsonTokenizeException
@@ -91,7 +93,7 @@ decode !bs = runST $ do
   !b <- B.new
   P.parseBytesST (P.skipWhile isSpace *> manyTokens b) bs >>= \case
     P.Failure err -> pure (Left err)
-    P.Success cs _ _ -> pure (Right cs)
+    P.Success cs _ -> pure (Right cs)
 
 manyTokens ::
      Builder s Token
@@ -108,7 +110,7 @@ manyTokens !b0 = do
     else manyTokens b1
 
 oneToken :: Parser JsonTokenizeException s Token
-oneToken = P.anyAscii JsonTokenizeException >>= \case
+oneToken = Latin.any JsonTokenizeException >>= \case
   '{' -> pure LeftBrace
   '}' -> pure RightBrace
   '[' -> pure LeftBracket
@@ -116,28 +118,28 @@ oneToken = P.anyAscii JsonTokenizeException >>= \case
   ',' -> pure Comma
   ':' -> pure Colon
   't' -> do
-    P.ascii3 NonTrueCharacter 'r' 'u' 'e'
+    Latin.char3 NonTrueCharacter 'r' 'u' 'e'
     pure BooleanTrue
   'f' -> do
-    P.ascii4 NonFalseCharacter 'a' 'l' 's' 'e'
+    Latin.char4 NonFalseCharacter 'a' 'l' 's' 'e'
     pure BooleanFalse
   'n' -> do
-    P.ascii3 NonNumericCharacter 'u' 'l' 'l'
+    Latin.char3 NonNullCharacter 'u' 'l' 'l'
     pure Null
   '"' -> do
-    start <- P.cursor
+    start <- Unsafe.cursor
     string start
-  '-' -> number (-1) `P.orElse` largeNumber (-1)
+  '-' -> fmap Number (SCI.parserNegatedUtf8Bytes NonLeadingCharacter)
   c | c >= '0' && c <= '9' -> do
-        P.unconsume 1
-        number 1 `P.orElse` largeNumber 1
+        Unsafe.unconsume 1
+        fmap Number (SCI.parserUnsignedUtf8Bytes NonLeadingCharacter)
   _ -> P.fail NonLeadingCharacter
 
 copyAndEscape :: Int -> Parser JsonTokenizeException s Token
 copyAndEscape !maxLen = do
   !dst <- P.effect (PM.newByteArray maxLen)
-  let go !ix = P.anyUtf8# JsonTokenizeException `P.bindChar` \c -> case c of
-        '\\'# -> P.anyAscii JsonTokenizeException >>= \case
+  let go !ix = Utf8.any# JsonTokenizeException `P.bindFromCharToLifted` \c -> case c of
+        '\\'# -> Latin.any JsonTokenizeException >>= \case
           '"' -> do
             P.effect (PM.writeByteArray dst ix (c2w '"'))
             go (ix + 1)
@@ -163,7 +165,7 @@ copyAndEscape !maxLen = do
             P.effect (PM.writeByteArray dst ix (c2w '\f'))
             go (ix + 1)
           'u' -> do
-            w <- P.hexWord16 JsonTokenizeException
+            w <- Latin.hexWord16 JsonTokenizeException
             if w >= 0xD800 && w < 0xDFFF
               then go =<< P.effect (encodeUtf8Char dst ix '\xFFFD')
               else go =<< P.effect (encodeUtf8Char dst ix (w16ToChar w))
@@ -209,10 +211,10 @@ string !start = go 1 where
     P.any JsonTokenizeException >>= \case
       92 -> P.any JsonTokenizeException *> go 0 -- backslash
       34 -> do -- double quote
-        !pos <- P.cursor
+        !pos <- Unsafe.cursor
         case canMemcpy of
           1 -> do
-            src <- P.expose
+            src <- Unsafe.expose
             str <- P.effect $ do
               let end = pos - 1
               let len = end - start
@@ -221,102 +223,17 @@ string !start = go 1 where
               PM.unsafeFreezeByteArray dst
             pure (String (TS.fromShortByteStringUnsafe (byteArrayToShortByteString str)))
           _ -> do
-            P.unconsume (pos - start)
+            Unsafe.unconsume (pos - start)
             let end = pos - 1
             let maxLen = end - start
             copyAndEscape maxLen
       W8# w -> go (canMemcpy .&. I# (ltWord# w 128##) .&. I# (gtWord# w 31##))
-
-number :: Int64 -> Parser JsonTokenizeException s Token
-number !sign = do
-  coeff <- P.decWord32 JsonTokenizeException
-  P.isEndOfInput >>= \case
-    True -> pure (NumberSmall (SmallNumber (sign * (fromIntegral coeff)) 0))
-    False -> P.anyAscii# JsonTokenizeException `P.bindChar` \c -> case c of
-      '.'# -> do
-        !start <- P.cursor
-        !numer <- P.decWord16 JsonTokenizeException
-        !end <- P.cursor
-        let !logDenom = fromIntegral @Int @Int64 (end - start)
-            !coeff' = fromIntegral @Word32 @Int64 coeff * (10 ^ logDenom) + fromIntegral @Word16 @Int64 numer
-        P.isEndOfInput >>= \case
-          True -> pure (NumberSmall (SmallNumber (sign * coeff') (negate logDenom)))
-          False -> P.anyAscii# JsonTokenizeException `P.bindChar` \x ->
-            attemptSmallExp x (unI64 sign) (unI64 coeff') (unI64 (negate logDenom))
-      _ -> attemptSmallExp c (unI64 sign) (unI64 (fromIntegral coeff)) (unI64 0)
-
-largeNumber :: Int -> Parser JsonTokenizeException s Token
-largeNumber !sign = do
-  coeff <- P.decPositiveInteger JsonTokenizeException
-  P.isEndOfInput >>= \case
-    True -> pure (NumberLarge (LargeNumber (fromIntegral sign * coeff) 0))
-    False -> P.anyAscii# JsonTokenizeException `P.bindChar` \c -> case c of
-      '.'# -> do
-        !start <- P.cursor
-        !numer <- P.decPositiveInteger JsonTokenizeException
-        !end <- P.cursor
-        let !logDenom = end - start
-            !coeff' = coeff * (10 ^ fromIntegral @Int @Integer logDenom) + numer
-        P.isEndOfInput >>= \case
-          True -> pure (NumberLarge (LargeNumber (fromIntegral sign * coeff') (fromIntegral (negate logDenom))))
-          False -> P.anyAscii# JsonTokenizeException `P.bindChar` \x ->
-            attemptLargeExp x (unI sign) coeff' (unI (negate logDenom))
-      _ -> attemptLargeExp c (unI sign) coeff 0#
 
 unI64 :: Int64 -> Int#
 unI64 (I64# i) = i
 
 unI :: Int -> Int#
 unI (I# i) = i
-
-attemptSmallExp :: Char# -> Int# -> Int# -> Int# -> Parser JsonTokenizeException s Token
-attemptSmallExp !c# !sign# !coeff# !deltaExp# = case c# of
-  'e'# -> do
-    e <- afterExp
-    pure (NumberSmall (SmallNumber (sign * coeff) (e + deltaExp)))
-  'E'# -> do
-    e <- afterExp
-    pure (NumberSmall (SmallNumber (sign * coeff) (e + deltaExp)))
-  _ -> do
-    P.unconsume 1
-    pure (NumberSmall (SmallNumber (sign * coeff) deltaExp))
-  where
-  sign = I64# sign#
-  coeff = I64# coeff#
-  deltaExp = I64# deltaExp#
-
-attemptLargeExp :: Char# -> Int# -> Integer -> Int# -> Parser JsonTokenizeException s Token
-attemptLargeExp !c# !sign# !coeff !deltaExp# = case c# of
-  'e'# -> do
-    e <- afterExpLarge
-    pure (NumberLarge (LargeNumber (sign * coeff) (e + fromIntegral deltaExp)))
-  'E'# -> do
-    e <- afterExpLarge
-    pure (NumberLarge (LargeNumber (sign * coeff) (e + fromIntegral deltaExp)))
-  _ -> do
-    P.unconsume 1
-    pure (NumberLarge (LargeNumber (sign * coeff) (fromIntegral deltaExp)))
-  where
-  sign = fromIntegral (I# sign#) :: Integer
-  deltaExp = I# deltaExp#
-
-afterExp :: Parser JsonTokenizeException s Int64
-afterExp = P.anyAscii JsonTokenizeException >>= \case
-  '+' -> fmap fromIntegral (P.decWord16 NonNumericCharacter)
-  '-' -> fmap
-    (\x -> negate (fromIntegral x))
-    (P.decWord16 JsonTokenizeException)
-  _ -> do
-    P.unconsume 1
-    fmap fromIntegral (P.decWord16 NonNumericCharacter)
-
-afterExpLarge :: Parser JsonTokenizeException s Integer
-afterExpLarge = P.anyAscii JsonTokenizeException >>= \case
-  '+' -> P.decPositiveInteger NonNumericCharacter
-  '-' -> fmap negate (P.decPositiveInteger NonNumericCharacter)
-  _ -> do
-    P.unconsume 1
-    P.decPositiveInteger NonNumericCharacter
 
 byteArrayToShortByteString :: ByteArray -> BSS.ShortByteString
 byteArrayToShortByteString (PM.ByteArray x) = BSS.SBS x

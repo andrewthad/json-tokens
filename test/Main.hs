@@ -14,10 +14,10 @@ import Twitter1 (encodedTwitter1,tokensTwitter1)
 import Twitter10 (encodedTwitter10)
 import Twitter100 (encodedTwitter100)
 
-import qualified Data.Json.Tokenize as J
-import qualified GHC.Exts as Exts
 import qualified Data.Foldable as F
+import qualified Data.Json.Tokenize as J
 import qualified Data.List as L
+import qualified Data.Number.Scientific as SCI
 import qualified Data.Primitive as PM
 import qualified GHC.Exts as Exts
 import qualified Test.Tasty.HUnit as THU
@@ -42,7 +42,7 @@ tests = testGroup "Tests"
   , THU.testCase "D" $
       Right
         [ J.LeftBracket
-        , J.NumberSmall (J.SmallNumber (-42) 0)
+        , J.Number (SCI.small (-42) 0)
         , J.RightBracket
         ]
       @=?
@@ -50,9 +50,9 @@ tests = testGroup "Tests"
   , THU.testCase "E" $
       Right
         [ J.LeftBracket
-        , J.NumberSmall (J.SmallNumber (-2) 5)
+        , J.Number (SCI.small (-2) 5)
         , J.Comma
-        , J.NumberSmall (J.SmallNumber (-13) (-2))
+        , J.Number (SCI.small (-13) (-2))
         , J.RightBracket
         ]
       @=?
@@ -60,9 +60,9 @@ tests = testGroup "Tests"
   , THU.testCase "F" $
       Right
         [ J.LeftBracket
-        , J.NumberSmall (J.SmallNumber 2 5)
+        , J.Number (SCI.small 2 5)
         , J.Comma
-        , J.NumberSmall (J.SmallNumber 13 (-2))
+        , J.Number (SCI.small 13 (-2))
         , J.RightBracket
         ]
       @=?
@@ -70,31 +70,31 @@ tests = testGroup "Tests"
   , THU.testCase "F" $
       Right
         [ J.LeftBracket
-        , J.NumberSmall (J.SmallNumber (-20) 4)
+        , J.Number (SCI.small (-20) 4)
         , J.Comma
-        , J.NumberSmall (J.SmallNumber 136 (-1))
+        , J.Number (SCI.small 136 (-1))
         , J.RightBracket
         ]
       @=?
       fmap F.toList (J.decode (pack "[-2.0e5,13.6E+0]"))
   , THU.testCase "G" $
-      Right [ J.NumberSmall (J.SmallNumber (6553565535) (-5)) ]
+      Right [ J.Number (SCI.large (6553565535) (-5)) ]
       @=?
       fmap F.toList (J.decode (pack "65535.65535"))
   , THU.testCase "H" $
-      Right [ J.NumberSmall (J.SmallNumber (65535001) (-3)) ]
+      Right [ J.Number (SCI.large (65535001) (-3)) ]
       @=?
       fmap F.toList (J.decode (pack "65535.001"))
   , THU.testCase "I" $
-      Right [ J.NumberLarge (J.LargeNumber 9223372036854775808 0) ]
+      Right [ J.Number (SCI.large 9223372036854775808 0) ]
       @=?
       fmap F.toList (J.decode (pack "9223372036854775808"))
   , THU.testCase "J" $
       Right
         [ J.LeftBracket
-        , J.NumberLarge (J.LargeNumber 9223372036854775818 0)
+        , J.Number (SCI.large 9223372036854775818 0)
         , J.Comma
-        , J.NumberLarge (J.LargeNumber (-21) (-9223372036854775820))
+        , J.Number (SCI.large (-21) (-9223372036854775820))
         , J.RightBracket
         ]
       @=?
