@@ -3,9 +3,8 @@
 
 import Data.Bytes.Types (Bytes(..))
 import Data.Char (ord)
-import Data.Either (isRight)
+import Data.Either (isRight,isLeft)
 import Data.Primitive (ByteArray)
-import Data.Semigroup (stimes)
 import Data.Word (Word8)
 import Test.Tasty (defaultMain,testGroup,TestTree)
 import Test.Tasty.HUnit ((@=?))
@@ -16,7 +15,6 @@ import Twitter100 (encodedTwitter100)
 
 import qualified Data.Foldable as F
 import qualified Data.Json.Tokenize as J
-import qualified Data.List as L
 import qualified Data.Number.Scientific as SCI
 import qualified Data.Primitive as PM
 import qualified GHC.Exts as Exts
@@ -110,6 +108,10 @@ tests = testGroup "Tests"
       isRight (J.decode (toSlice encodedTwitter10)) @=? True
   , THU.testCase "M" $
       isRight (J.decode (toSlice encodedTwitter100)) @=? True
+  , THU.testCase "N" $
+      isLeft (J.decode (pack " 00")) @=? True
+  , THU.testCase "O" $
+      isLeft (J.decode (pack " 05")) @=? True
   ]
 
 pack :: String -> Bytes

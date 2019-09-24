@@ -1,6 +1,5 @@
 {-# language BangPatterns #-}
 {-# language BinaryLiterals #-}
-{-# language DeriveFunctor #-}
 {-# language DerivingStrategies #-}
 {-# language DuplicateRecordFields #-}
 {-# language LambdaCase #-}
@@ -27,9 +26,8 @@ import Data.Int (Int64)
 import Data.Primitive (MutableByteArray,ByteArray)
 import Data.Primitive (SmallArray)
 import Data.Text.Short (ShortText)
-import Data.Word (Word8,Word16,Word32)
-import GHC.Int (Int64(I64#))
-import GHC.Exts (Char#,Int#,Int(I#),Char(C#))
+import Data.Word (Word8,Word16)
+import GHC.Exts (Int(I#),Char(C#))
 import GHC.Exts (word2Int#,chr#,gtWord#,ltWord#)
 import GHC.Word (Word16(W16#),Word8(W8#))
 import Data.Number.Scientific (Scientific)
@@ -65,6 +63,7 @@ data JsonTokenizeException
   | NonFalseCharacter
   | NonNullCharacter
   | NonLeadingCharacter
+  | LeadingZero
   | BadEscapeSequence
   | JsonTokenizeException
   deriving stock (Eq,Show)
@@ -130,9 +129,11 @@ oneToken = Latin.any JsonTokenizeException >>= \case
     start <- Unsafe.cursor
     string start
   '-' -> fmap Number (SCI.parserNegatedUtf8Bytes NonLeadingCharacter)
-  c | c >= '0' && c <= '9' -> do
-        Unsafe.unconsume 1
-        fmap Number (SCI.parserUnsignedUtf8Bytes NonLeadingCharacter)
+  '0' -> Latin.trySatisfy (\c -> c >= '0' && c <= '9') >>= \case
+    True -> P.fail LeadingZero
+    False -> fmap Number (SCI.parserTrailingUtf8Bytes NonLeadingCharacter 0)
+  c | c >= '1' && c <= '9' ->
+        fmap Number (SCI.parserTrailingUtf8Bytes NonLeadingCharacter (ord c - 48))
   _ -> P.fail NonLeadingCharacter
 
 copyAndEscape :: Int -> Parser JsonTokenizeException s Token
@@ -228,12 +229,6 @@ string !start = go 1 where
             let maxLen = end - start
             copyAndEscape maxLen
       W8# w -> go (canMemcpy .&. I# (ltWord# w 128##) .&. I# (gtWord# w 31##))
-
-unI64 :: Int64 -> Int#
-unI64 (I64# i) = i
-
-unI :: Int -> Int#
-unI (I# i) = i
 
 byteArrayToShortByteString :: ByteArray -> BSS.ShortByteString
 byteArrayToShortByteString (PM.ByteArray x) = BSS.SBS x
