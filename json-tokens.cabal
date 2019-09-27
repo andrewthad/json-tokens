@@ -1,10 +1,10 @@
 cabal-version: 2.2
-name: json-tokenize
+name: json-tokens
 version: 0.1.0.0
 synopsis: Tokenize JSON
 description: Convert JSON to a token stream.
-homepage: https://github.com/andrewthad/json-tokenize
-bug-reports: https://github.com/andrewthad/json-tokenize/issues
+homepage: https://github.com/andrewthad/json-tokens
+bug-reports: https://github.com/andrewthad/json-tokens/issues
 license: BSD-3-Clause
 license-file: LICENSE
 author: Andrew Martin
@@ -14,8 +14,7 @@ category: Data
 extra-source-files: CHANGELOG.md
 
 library
-  exposed-modules:
-    Data.Json.Tokenize
+  exposed-modules: Json.Token
   build-depends:
     , base >=4.12 && <5
     , array-builder >=0.1 && <0.2
@@ -45,7 +44,7 @@ test-suite test
     , base >=4.12.0.0 && <5
     , byteslice
     , bytestring
-    , json-tokenize
+    , json-tokens
     , neat-interpolation >=0.3.2
     , primitive
     , scientific-notation >=0.1
@@ -62,7 +61,7 @@ benchmark bench
     , byteslice
     , bytestring
     , gauge
-    , json-tokenize
+    , json-tokens
     , neat-interpolation >=0.3.2
     , primitive
     , text >=1.2

@@ -6,7 +6,7 @@ module Twitter1
   ) where
 
 import Data.ByteString.Short (ShortByteString,toShort)
-import Data.Json.Tokenize (Token(..))
+import Json.Token (Token(..))
 import Data.Primitive (ByteArray)
 import Data.Text.Encoding (encodeUtf8)
 import NeatInterpolation (text)

@@ -4,7 +4,7 @@ module Twitter
   , decodeResponse
   ) where
 
-import Data.Json.Tokenize (SmallNumber,Token(..),decode)
+import Json.Token (SmallNumber,Token(..),decode)
 import Data.Parser (parse)
 
 data Response = Response

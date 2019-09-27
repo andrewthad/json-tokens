@@ -14,7 +14,7 @@ import Twitter10 (encodedTwitter10)
 import Twitter100 (encodedTwitter100)
 
 import qualified Data.Foldable as F
-import qualified Data.Json.Tokenize as J
+import qualified Json.Token as J
 import qualified Data.Number.Scientific as SCI
 import qualified Data.Primitive as PM
 import qualified GHC.Exts as Exts

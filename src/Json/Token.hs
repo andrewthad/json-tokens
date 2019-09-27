@@ -10,7 +10,7 @@
 {-# language TypeApplications #-}
 {-# language UnboxedTuples #-}
 
-module Data.Json.Tokenize
+module Json.Token
   ( Token(..)
   , JsonTokenizeException(..)
   , decode

@@ -3,7 +3,7 @@
 
 import Data.Bytes.Types (Bytes(..))
 import Data.Char (ord)
-import Data.Json.Tokenize (decode)
+import Json.Token (decode)
 import Data.Primitive (ByteArray)
 import Data.Word (Word8)
 import Gauge.Main (defaultMain,bgroup,bench,whnf)
