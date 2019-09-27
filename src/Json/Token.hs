@@ -12,7 +12,7 @@
 
 module Json.Token
   ( Token(..)
-  , JsonTokenizeException(..)
+  , TokenException(..)
   , decode
   ) where
 
@@ -22,7 +22,6 @@ import Data.Builder.ST (Builder)
 import Data.Bytes.Parser (Parser)
 import Data.Bytes.Types (Bytes(..))
 import Data.Char (ord)
-import Data.Int (Int64)
 import Data.Primitive (MutableByteArray,ByteArray)
 import Data.Primitive (SmallArray)
 import Data.Text.Short (ShortText)
@@ -43,6 +42,7 @@ import qualified Data.Primitive as PM
 import qualified Data.Text.Short.Unsafe as TS
 import qualified Data.Number.Scientific as SCI
 
+-- | A token in a JSON document.
 data Token
   = LeftBrace
   | RightBrace
@@ -57,7 +57,8 @@ data Token
   | Number {-# UNPACK #-} !Scientific
   deriving stock (Eq,Show)
 
-data JsonTokenizeException
+-- | An exception encountered while tokenizing a JSON document.
+data TokenException
   = InvalidNumber
   | InvalidLeader
   | ExpectedTrue
@@ -69,18 +70,6 @@ data JsonTokenizeException
   | IncompleteEscapeSequence
   deriving stock (Eq,Show)
 
-data SmallNumber = SmallNumber
-  { coefficient :: {-# UNPACK #-} !Int64
-  , exponent :: {-# UNPACK #-} !Int64
-  }
-  deriving stock (Eq,Show)
-
-data LargeNumber = LargeNumber
-  { coefficient :: !Integer
-  , exponent :: !Integer
-  }
-  deriving stock (Eq,Show)
-
 isSpace :: Word8 -> Bool
 isSpace w =
      w == c2w ' '
@@ -88,7 +77,29 @@ isSpace w =
   || w == c2w '\r'
   || w == c2w '\n'
 
-decode :: Bytes -> Either JsonTokenizeException (SmallArray Token)
+-- | Decode a sequence as JSON tokens. This allows token
+-- sequences that would be rejected by the ABNF given in
+-- <https://tools.ietf.org/html/rfc7159 RFC 7159>:
+--
+-- >>> decode (Bytes.fromAsciiString "[ , true }")
+-- Right [ LeftBracket, Comma, BooleanTrue, RightBrace ]
+-- 
+-- It is up to the user to reject such malformed JSON when
+-- they parse the token sequence. More surprisingly, this
+-- tokenizer accepts some unnatural juxtapositions of token
+-- sequences without whitespace. For example:
+--
+-- >>> decode (Bytes.fromAsciiString "55truefalse")
+-- Right [ Number 55, BooleanTrue, BooleanFalse ]
+-- >>> decode (Bytes.fromAsciiString "null\"hello\"")
+-- Right [ Null, String "hello" ]
+--
+-- Acceptance of such samples simplifies the implementation
+-- of this tokenizer. These unnatural juxtapositions always
+-- result in token sequences that should be rejected anyway in
+-- the subsequent parsing done by the user. Consequently, their
+-- acceptance is not considered harmful.
+decode :: Bytes -> Either TokenException (SmallArray Token)
 decode !bs = runST $ do
   !b <- B.new
   P.parseBytesST (P.skipWhile isSpace *> manyTokens b) bs >>= \case
@@ -97,7 +108,7 @@ decode !bs = runST $ do
 
 manyTokens ::
      Builder s Token
-  -> Parser JsonTokenizeException s (SmallArray Token)
+  -> Parser TokenException s (SmallArray Token)
 manyTokens !b0 = do
   t <- oneToken
   !b1 <- P.effect (B.push t b0)
@@ -112,7 +123,7 @@ manyTokens !b0 = do
 -- TODO: oneToken is only called in contexts where the initial
 -- call to Latin.any cannot fail. Consider refactoring to make
 -- this more explicit.
-oneToken :: Parser JsonTokenizeException s Token
+oneToken :: Parser TokenException s Token
 oneToken = Latin.any InvalidLeader >>= \case
   '{' -> pure LeftBrace
   '}' -> pure RightBrace
@@ -140,7 +151,7 @@ oneToken = Latin.any InvalidLeader >>= \case
         fmap Number (SCI.parserTrailingUtf8Bytes InvalidNumber (ord c - 48))
   _ -> P.fail InvalidLeader
 
-copyAndEscape :: Int -> Parser JsonTokenizeException s Token
+copyAndEscape :: Int -> Parser TokenException s Token
 copyAndEscape !maxLen = do
   !dst <- P.effect (PM.newByteArray maxLen)
   let go !ix = Utf8.any# IncompleteString `P.bindFromCharToLifted` \c -> case c of
@@ -212,7 +223,7 @@ encodeUtf8Char !marr !ix !c
 -- bytes than its escape sequence.
 -- TODO: Something fishy is going on with escape sequences
 -- in this function. Look over this again.
-string :: Int -> Parser JsonTokenizeException s Token
+string :: Int -> Parser TokenException s Token
 string !start = go 1 where
   go !canMemcpy = do
     P.any IncompleteString >>= \case
