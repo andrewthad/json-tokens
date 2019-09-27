@@ -58,14 +58,15 @@ data Token
   deriving stock (Eq,Show)
 
 data JsonTokenizeException
-  = NonNumericCharacter
-  | NonTrueCharacter
-  | NonFalseCharacter
-  | NonNullCharacter
-  | NonLeadingCharacter
+  = InvalidNumber
+  | InvalidLeader
+  | ExpectedTrue
+  | ExpectedFalse
+  | ExpectedNull
   | LeadingZero
-  | BadEscapeSequence
-  | JsonTokenizeException
+  | InvalidEscapeSequence
+  | IncompleteString
+  | IncompleteEscapeSequence
   deriving stock (Eq,Show)
 
 data SmallNumber = SmallNumber
@@ -108,8 +109,11 @@ manyTokens !b0 = do
       pure $! C.concat cs
     else manyTokens b1
 
+-- TODO: oneToken is only called in contexts where the initial
+-- call to Latin.any cannot fail. Consider refactoring to make
+-- this more explicit.
 oneToken :: Parser JsonTokenizeException s Token
-oneToken = Latin.any JsonTokenizeException >>= \case
+oneToken = Latin.any InvalidLeader >>= \case
   '{' -> pure LeftBrace
   '}' -> pure RightBrace
   '[' -> pure LeftBracket
@@ -117,30 +121,30 @@ oneToken = Latin.any JsonTokenizeException >>= \case
   ',' -> pure Comma
   ':' -> pure Colon
   't' -> do
-    Latin.char3 NonTrueCharacter 'r' 'u' 'e'
+    Latin.char3 ExpectedTrue 'r' 'u' 'e'
     pure BooleanTrue
   'f' -> do
-    Latin.char4 NonFalseCharacter 'a' 'l' 's' 'e'
+    Latin.char4 ExpectedFalse 'a' 'l' 's' 'e'
     pure BooleanFalse
   'n' -> do
-    Latin.char3 NonNullCharacter 'u' 'l' 'l'
+    Latin.char3 ExpectedNull 'u' 'l' 'l'
     pure Null
   '"' -> do
     start <- Unsafe.cursor
     string start
-  '-' -> fmap Number (SCI.parserNegatedUtf8Bytes NonLeadingCharacter)
+  '-' -> fmap Number (SCI.parserNegatedUtf8Bytes InvalidNumber)
   '0' -> Latin.trySatisfy (\c -> c >= '0' && c <= '9') >>= \case
     True -> P.fail LeadingZero
-    False -> fmap Number (SCI.parserTrailingUtf8Bytes NonLeadingCharacter 0)
+    False -> fmap Number (SCI.parserTrailingUtf8Bytes InvalidNumber 0)
   c | c >= '1' && c <= '9' ->
-        fmap Number (SCI.parserTrailingUtf8Bytes NonLeadingCharacter (ord c - 48))
-  _ -> P.fail NonLeadingCharacter
+        fmap Number (SCI.parserTrailingUtf8Bytes InvalidNumber (ord c - 48))
+  _ -> P.fail InvalidLeader
 
 copyAndEscape :: Int -> Parser JsonTokenizeException s Token
 copyAndEscape !maxLen = do
   !dst <- P.effect (PM.newByteArray maxLen)
-  let go !ix = Utf8.any# JsonTokenizeException `P.bindFromCharToLifted` \c -> case c of
-        '\\'# -> Latin.any JsonTokenizeException >>= \case
+  let go !ix = Utf8.any# IncompleteString `P.bindFromCharToLifted` \c -> case c of
+        '\\'# -> Latin.any IncompleteEscapeSequence >>= \case
           '"' -> do
             P.effect (PM.writeByteArray dst ix (c2w '"'))
             go (ix + 1)
@@ -166,11 +170,11 @@ copyAndEscape !maxLen = do
             P.effect (PM.writeByteArray dst ix (c2w '\f'))
             go (ix + 1)
           'u' -> do
-            w <- Latin.hexWord16 JsonTokenizeException
+            w <- Latin.hexWord16 InvalidEscapeSequence
             if w >= 0xD800 && w < 0xDFFF
               then go =<< P.effect (encodeUtf8Char dst ix '\xFFFD')
               else go =<< P.effect (encodeUtf8Char dst ix (w16ToChar w))
-          _ -> P.fail BadEscapeSequence
+          _ -> P.fail InvalidEscapeSequence
         '"'# -> do
           str <- P.effect
             (PM.unsafeFreezeByteArray =<< PM.resizeMutableByteArray dst ix)
@@ -201,16 +205,18 @@ encodeUtf8Char !marr !ix !c
 
 
 -- Compute the maximum number of bytes that could possibly
--- be required to house the UTF-8 encoded string once any
+-- be required to house the UTF-8-encoded string once any
 -- JSON escape sequences have been resolved.
 -- The correctness of this hinges on the assumption that
 -- the UTF-8 encoding of a character never takes up more
 -- bytes than its escape sequence.
+-- TODO: Something fishy is going on with escape sequences
+-- in this function. Look over this again.
 string :: Int -> Parser JsonTokenizeException s Token
 string !start = go 1 where
   go !canMemcpy = do
-    P.any JsonTokenizeException >>= \case
-      92 -> P.any JsonTokenizeException *> go 0 -- backslash
+    P.any IncompleteString >>= \case
+      92 -> P.any InvalidEscapeSequence *> go 0 -- backslash
       34 -> do -- double quote
         !pos <- Unsafe.cursor
         case canMemcpy of
