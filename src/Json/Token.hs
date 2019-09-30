@@ -102,9 +102,11 @@ isSpace w =
 decode :: Bytes -> Either TokenException (SmallArray Token)
 decode !bs = runST $ do
   !b <- B.new
-  P.parseBytesST (P.skipWhile isSpace *> manyTokens b) bs >>= \case
+  P.parseBytesEffectfully (P.skipWhile isSpace *> manyTokens b) bs >>= \case
     P.Failure err -> pure (Left err)
-    P.Success cs _ -> pure (Right cs)
+    -- Since manyTokens only completes once the end of the input
+    -- has been reached, we do not need to check the length here.
+    P.Success (P.Slice _ _ cs) -> pure (Right cs)
 
 manyTokens ::
      Builder s Token
@@ -181,7 +183,7 @@ copyAndEscape !maxLen = do
             P.effect (PM.writeByteArray dst ix (c2w '\f'))
             go (ix + 1)
           'u' -> do
-            w <- Latin.hexWord16 InvalidEscapeSequence
+            w <- Latin.hexFixedWord16 InvalidEscapeSequence
             if w >= 0xD800 && w < 0xDFFF
               then go =<< P.effect (encodeUtf8Char dst ix '\xFFFD')
               else go =<< P.effect (encodeUtf8Char dst ix (w16ToChar w))
