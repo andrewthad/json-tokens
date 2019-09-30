@@ -1,6 +1,6 @@
 cabal-version: 2.2
 name: json-tokens
-version: 0.1.0.0
+version: 0.1.0.1
 synopsis: Tokenize JSON
 description:
   Convert JSON to a token stream. This libary focuses on
